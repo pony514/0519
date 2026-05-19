@@ -1,12 +1,18 @@
 let video;
 let hands;
 let camera;
-let score = 0;
-let target = { x: 300, y: 200, radius: 30 };
 let handResults = null;
 
+// 遊戲變數
+let gameState = "WAITING"; // WAITING, COUNTING, RESULT
+let timer = 3;
+let lastTime = 0;
+let playerChoice = "";
+let aiChoice = "";
+let gameResult = "";
+let choices = ["石頭", "剪刀", "布"];
+
 function setup() {
-  // 建立畫布並放入指定容器
   let cnv = createCanvas(640, 480);
   cnv.parent('canvas-container');
 
@@ -44,45 +50,129 @@ function setup() {
 }
 
 function draw() {
-  // 繪製背景
-  background(0);
-
-  // 水平翻轉畫布（讓操作像照鏡子）
+  background(34);
+  
   push();
-  translate(width, 0);
-  scale(-1, 1);
-
-  // 1. 繪製攝影機畫面
+  translate(width, 0); // 鏡像處理
+  scale(-1, 1); 
   image(video, 0, 0, width, height);
-
-  // 2. 繪製目標紅球
-  fill(255, 0, 0);
-  noStroke();
-  circle(target.x, target.y, target.radius * 2);
-
-  // 3. 處理偵測結果
+  
   if (handResults && handResults.multiHandLandmarks) {
     for (const landmarks of handResults.multiHandLandmarks) {
-      const indexFinger = landmarks[8]; // 食指指尖
-      const x = indexFinger.x * width;
-      const y = indexFinger.y * height;
-
-      // 繪製指尖位置
-      fill(255, 255, 0);
-      circle(x, y, 20);
-
-      // 碰撞檢測
-      if (dist(x, y, target.x, target.y) < target.radius) {
-        score++;
-        select('#score').html(score); // 更新 HTML 中的分數
-        respawnTarget();
-      }
+      drawSkeleton(landmarks);
+      playerChoice = getGesture(landmarks);
     }
   }
   pop();
+
+  // UI 層
+  drawUI();
+  
+  // 遊戲邏輯處理
+  if (gameState === "COUNTING") {
+    if (millis() - lastTime > 1000) {
+      timer--;
+      lastTime = millis();
+      if (timer <= 0) {
+        executeBattle();
+      }
+    }
+  }
 }
 
-function respawnTarget() {
-  target.x = random(target.radius, width - target.radius);
-  target.y = random(target.radius, height - target.radius);
+function drawSkeleton(landmarks) {
+  // 定義手指連線路徑
+  const connections = [
+    [0, 1, 2, 3, 4],     // 大拇指
+    [0, 5, 6, 7, 8],     // 食指
+    [9, 10, 11, 12],     // 中指
+    [13, 14, 15, 16],    // 無名指
+    [17, 18, 19, 20],    // 小拇指
+    [0, 17], [5, 9], [9, 13], [13, 17] // 掌心
+  ];
+
+  stroke(0, 255, 0);
+  strokeWeight(4);
+  for (let path of connections) {
+    for (let i = 0; i < path.length - 1; i++) {
+      let a = landmarks[path[i]];
+      let b = landmarks[path[i+1]];
+      line(a.x * width, a.y * height, b.x * width, b.y * height);
+    }
+  }
+
+  fill(255);
+  noStroke();
+  for (let pt of landmarks) {
+    circle(pt.x * width, pt.y * height, 8);
+  }
+}
+
+function getGesture(landmarks) {
+  // 判斷手指是否伸直 (Tip 的 Y 軸座標比 PIP 的 Y 軸座標小，代表伸直)
+  let isIndexUp = landmarks[8].y < landmarks[6].y;
+  let isMiddleUp = landmarks[12].y < landmarks[10].y;
+  let isRingUp = landmarks[16].y < landmarks[14].y;
+  let isPinkyUp = landmarks[20].y < landmarks[18].y;
+  let isThumbUp = landmarks[4].x > landmarks[3].x; // 簡單判斷大拇指
+
+  if (isIndexUp && isMiddleUp && isRingUp && isPinkyUp) return "布";
+  if (isIndexUp && isMiddleUp && !isRingUp && !isPinkyUp) return "剪刀";
+  if (!isIndexUp && !isMiddleUp && !isRingUp && !isPinkyUp) return "石頭";
+  return "偵測中...";
+}
+
+function executeBattle() {
+  aiChoice = random(choices);
+  if (playerChoice === aiChoice) {
+    gameResult = "平手！";
+  } else if (
+    (playerChoice === "石頭" && aiChoice === "剪刀") ||
+    (playerChoice === "剪刀" && aiChoice === "布") ||
+    (playerChoice === "布" && aiChoice === "石頭")
+  ) {
+    gameResult = "你贏了！";
+  } else {
+    gameResult = "你輸了！";
+  }
+  gameState = "RESULT";
+}
+
+function drawUI() {
+  textAlign(CENTER, CENTER);
+  textSize(32);
+  fill(255);
+  
+  if (gameState === "WAITING") {
+    rectMode(CENTER);
+    fill(0, 150);
+    rect(width/2, height/2, 400, 100);
+    fill(255);
+    text("點擊畫面開始遊戲", width/2, height/2);
+  } else if (gameState === "COUNTING") {
+    textSize(100);
+    fill(255, 204, 0);
+    text(timer, width/2, height/2);
+    textSize(32);
+    text("目前出拳: " + playerChoice, width/2, height/2 + 80);
+  } else if (gameState === "RESULT") {
+    fill(0, 180);
+    rect(width/2, height/2, 500, 300, 20);
+    fill(255);
+    textSize(48);
+    text(gameResult, width/2, height/2 - 60);
+    textSize(24);
+    text(`玩家: ${playerChoice}  VS  AI: ${aiChoice}`, width/2, height/2 + 10);
+    fill(0, 255, 0);
+    text("點擊畫面重玩", width/2, height/2 + 80);
+  }
+}
+
+function mousePressed() {
+  if (gameState === "WAITING" || gameState === "RESULT") {
+    gameState = "COUNTING";
+    timer = 3;
+    lastTime = millis();
+    gameResult = "";
+  }
 }
