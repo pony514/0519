@@ -60,7 +60,15 @@ function draw() {
   if (handResults && handResults.multiHandLandmarks) {
     for (const landmarks of handResults.multiHandLandmarks) {
       drawSkeleton(landmarks);
-      playerChoice = getGesture(landmarks);
+      let gesture = getGesture(landmarks);
+      playerChoice = gesture;
+
+      // 手勢控制邏輯
+      if (gesture === "ROCK") {
+        gameState = "WAITING";
+      } else if (gameState === "RESULT" && gesture === "OK") {
+        startNewGame();
+      }
     }
   }
   pop();
@@ -114,7 +122,14 @@ function getGesture(landmarks) {
   let isMiddleUp = landmarks[12].y < landmarks[10].y;
   let isRingUp = landmarks[16].y < landmarks[14].y;
   let isPinkyUp = landmarks[20].y < landmarks[18].y;
-  let isThumbUp = landmarks[4].x > landmarks[3].x; // 簡單判斷大拇指
+
+  // 計算拇指尖與食指尖的距離 (標準化座標 0~1)
+  let thumbIndexDist = dist(landmarks[4].x, landmarks[4].y, landmarks[8].x, landmarks[8].y);
+
+  // OK 手勢: 拇指食指碰觸，其餘三指伸直
+  if (thumbIndexDist < 0.05 && isMiddleUp && isRingUp && isPinkyUp) return "OK";
+  // ROCK 手勢: 食指小指伸直，中指無名指彎曲
+  if (isIndexUp && isPinkyUp && !isMiddleUp && !isRingUp) return "ROCK";
 
   if (isIndexUp && isMiddleUp && isRingUp && isPinkyUp) return "布";
   if (isIndexUp && isMiddleUp && !isRingUp && !isPinkyUp) return "剪刀";
@@ -163,16 +178,22 @@ function drawUI() {
     text(gameResult, width/2, height/2 - 60);
     textSize(24);
     text(`玩家: ${playerChoice}  VS  AI: ${aiChoice}`, width/2, height/2 + 10);
-    fill(0, 255, 0);
-    text("點擊畫面重玩", width/2, height/2 + 80);
+    fill(100, 255, 100);
+    text("比 OK 手勢進行下一局", width/2, height/2 + 70);
+    fill(255, 100, 100);
+    text("比 ROCK 手勢結束遊戲", width/2, height/2 + 105);
   }
+}
+
+function startNewGame() {
+  gameState = "COUNTING";
+  timer = 3;
+  lastTime = millis();
+  gameResult = "";
 }
 
 function mousePressed() {
   if (gameState === "WAITING" || gameState === "RESULT") {
-    gameState = "COUNTING";
-    timer = 3;
-    lastTime = millis();
-    gameResult = "";
+    startNewGame();
   }
 }
